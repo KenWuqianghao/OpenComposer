@@ -1,0 +1,27 @@
+model:
+  name_or_path: "THUDM/glm-4-9b"
+  torch_dtype: "bfloat16"
+  attn_implementation: "flash_attention_2"
+
+data:
+  dataset_name: "bigcode/starcoderdata"
+  languages: ["python", "javascript", "typescript", "go", "rust"]
+  max_seq_length: 4096
+  streaming: true
+  num_proc: 8
+
+training:
+  output_dir: "./checkpoints/stage1_cpt"
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 64
+  learning_rate: 2.0e-5
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
+  num_train_epochs: 1
+  max_steps: 5000
+  save_steps: 500
+  logging_steps: 10
+  bf16: true
+  gradient_checkpointing: true
+  dataloader_num_workers: 4
+  deepspeed: "configs/deepspeed_zero2.json"

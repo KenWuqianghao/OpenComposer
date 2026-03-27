@@ -1,0 +1,9 @@
+{
+  "checkpoint": "./checkpoints/stage2_sft",
+  "timestamp": "2026-03-26T09:22:15.089711",
+  "humaneval": {
+    "pass_rate": 0.5,
+    "passed": 4,
+    "total": 8
+  }
+}

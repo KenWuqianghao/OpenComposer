@@ -1,0 +1,43 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets & local env
+.env
+.env.*
+*.pem
+
+# Training artifacts (large — do not commit)
+checkpoints/
+data/sft_tool_use/
+data/rl_tasks/
+wandb/
+runs/
+*.pt
+*.pth
+
+# Hugging Face cache if cloned inside project
+.cache/
+
+# Logs
+*.log
+logs/

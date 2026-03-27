@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    gcc \
+    g++ \
+    make \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir pytest pytest-timeout
+
+RUN useradd -m -s /bin/bash agent
+WORKDIR /workspace
+RUN chown agent:agent /workspace
+
+USER agent
+
+CMD ["bash"]

@@ -1,0 +1,44 @@
+model:
+  pretrain: "./checkpoints/stage2_sft"
+  torch_dtype: "bfloat16"
+
+rl:
+  algorithm: "reinforce_baseline"
+  kl_coef: 0.01
+  max_turns: 30
+  context_trigger_tokens: 8192
+  summary_max_tokens: 1024
+
+  actor_learning_rate: 5.0e-7
+  train_batch_size: 64
+  micro_train_batch_size: 4
+  rollout_batch_size: 64
+  micro_rollout_batch_size: 8
+  max_samples: 10000
+  max_epochs: 1
+
+  prompt_max_len: 2048
+  generate_max_len: 2048
+
+environment:
+  type: "docker"
+  image: "opencomposer/sandbox:latest"
+  timeout: 300
+  max_output_length: 10000
+
+reward:
+  type: "test_execution"
+  pass_reward: 1.0
+  fail_reward: -0.5
+  partial_reward: true
+
+vllm:
+  num_engines: 1
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.4
+
+output:
+  save_path: "./checkpoints/stage3_rl"
+  save_steps: 50
+  logging_steps: 1
+  use_wandb: false

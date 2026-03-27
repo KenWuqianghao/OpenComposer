@@ -1,0 +1,26 @@
+# GLM-4-9B SFT after stage1 CPT (uses GPU memory; ZeRO-2 no offload).
+model:
+  name_or_path: "./checkpoints/stage1_cpt"
+  torch_dtype: "bfloat16"
+  attn_implementation: "sdpa"
+
+data:
+  dataset_path: "./data/sft_tool_use"
+  max_seq_length: 4096
+
+training:
+  output_dir: "./checkpoints/stage2_sft"
+  optim: "adamw_bnb_8bit"
+  dataloader_num_workers: 0
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 1.0e-5
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
+  num_train_epochs: 1
+  max_steps: 80
+  save_steps: 40
+  logging_steps: 5
+  bf16: true
+  gradient_checkpointing: true
+  deepspeed: null

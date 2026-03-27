@@ -1,0 +1,32 @@
+# GLM-4-9B CPT on ~96GB HBM: no DeepSpeed (single-GPU ZeRO does not shrink optimizer).
+# Use bitsandbytes 8-bit AdamW to fit weights + optimizer + activations.
+model:
+  name_or_path: "THUDM/glm-4-9b-chat"
+  torch_dtype: "bfloat16"
+  attn_implementation: "sdpa"
+
+data:
+  dataset_name: "bigcode/starcoderdata"
+  fallback_dataset: "wikitext"
+  fallback_dataset_config: "wikitext-103-raw-v1"
+  fallback_text_column: "text"
+  languages: ["python"]
+  max_seq_length: 1024
+  streaming: true
+
+training:
+  output_dir: "./checkpoints/stage1_cpt"
+  optim: "adamw_bnb_8bit"
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 2.0e-5
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
+  num_train_epochs: 1
+  max_steps: 100
+  save_steps: 50
+  logging_steps: 5
+  bf16: true
+  gradient_checkpointing: true
+  dataloader_num_workers: 0
+  deepspeed: null

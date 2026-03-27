@@ -1,0 +1,107 @@
+[
+  {
+    "name": "read_file",
+    "description": "Read the contents of a file at the given path.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  },
+  {
+    "name": "write_file",
+    "description": "Write content to a file, creating or overwriting it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ]
+    }
+  },
+  {
+    "name": "edit_file",
+    "description": "Replace old_str with new_str in the file at path.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "old_str": {
+          "type": "string"
+        },
+        "new_str": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "old_str",
+        "new_str"
+      ]
+    }
+  },
+  {
+    "name": "grep",
+    "description": "Search for a regex pattern in files under the given path.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern"
+      ]
+    }
+  },
+  {
+    "name": "run_terminal",
+    "description": "Execute a shell command and return stdout/stderr.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  },
+  {
+    "name": "search_codebase",
+    "description": "Semantic keyword search across the codebase.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  }
+]
