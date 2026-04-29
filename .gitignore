@@ -10,6 +10,7 @@ __pycache__/
 
 # Virtual environments
 .venv/
+.vendor/
 venv/
 env/
 
@@ -41,3 +42,6 @@ runs/
 # Logs
 *.log
 logs/
+
+# Local eval outputs
+evaluation_results/

@@ -53,7 +53,7 @@ def prepare_rl_tasks(output_dir: str, source: str):
     with open(out_path / "tasks.json", "w") as f:
         json.dump(task_dicts, f, indent=2)
 
-    logger.info("Saved %d RL tasks to %s/tasks.json", len(task_dicts), output_dir)
+    logger.info("Saved %d RL tasks to %s/tasks.json", len(task_dicts), out_path)
 
 
 def prepare_tool_schemas(output_dir: str):
@@ -82,7 +82,11 @@ def verify_code_corpus():
 
 def main():
     parser = argparse.ArgumentParser(description="Prepare data for OpenComposer pipeline")
-    parser.add_argument("--stage", choices=["sft", "rl_tasks", "verify_corpus", "all"], default="all")
+    parser.add_argument(
+        "--stage",
+        choices=["sft", "rl_tasks", "verify_corpus", "all"],
+        default="all",
+    )
     parser.add_argument("--sft_output_dir", default="./data/sft_tool_use")
     parser.add_argument("--rl_output_dir", default="./data/rl_tasks")
     parser.add_argument("--schema_output_dir", default="./data")

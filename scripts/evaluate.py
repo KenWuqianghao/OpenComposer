@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
-"""Stage 4: Unified evaluation script for all pipeline stages.
-
-Runs HumanEval and agent-based coding evaluations at each checkpoint
-to verify no degradation across the pipeline.
-
-Usage:
-    # Evaluate a specific checkpoint
-    python scripts/evaluate.py --checkpoint_path THUDM/glm-4-9b-chat --eval humaneval
-
-    # Evaluate all stages
-    python scripts/evaluate.py --eval all
-
-    # Compare across checkpoints
-    python scripts/evaluate.py --compare
-"""
+"""Stage 4: Unified evaluation (Qwen MoE pipeline) — HumanEval only."""
 
 import argparse
 import json
@@ -25,62 +11,51 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from evaluation.run_humaneval import evaluate_humaneval
-from evaluation.run_swebench_lite import evaluate_swebench_lite
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+DEFAULT_BASE = "Qwen/Qwen3-Coder-30B-A3B"
+
 STAGE_CHECKPOINTS = {
-    "base": "THUDM/glm-4-9b-chat",
-    "stage1_cpt": "./checkpoints/stage1_cpt",
+    "base": DEFAULT_BASE,
+    "stage1_cpt": "./checkpoints/qwen3_moe_cpt_phase1",
     "stage2_sft": "./checkpoints/stage2_sft",
     "stage3_rl": "./checkpoints/stage3_rl",
 }
 
 
+def _checkpoint_available(checkpoint: str) -> bool:
+    ckpt_path = Path(checkpoint)
+    if ckpt_path.is_dir():
+        return True
+    return "/" in checkpoint and not checkpoint.startswith((".", "/"))
+
+
 def run_evaluation(checkpoint_path: str, eval_type: str, output_dir: str) -> dict:
-    """Run evaluation on a single checkpoint."""
     results = {"checkpoint": checkpoint_path, "timestamp": datetime.now().isoformat()}
 
-    if eval_type in ("humaneval", "all"):
-        logger.info("=== Running HumanEval on %s ===", checkpoint_path)
-        try:
-            he_results = evaluate_humaneval(checkpoint_path)
-            results["humaneval"] = {
-                "pass_rate": he_results["pass_rate"],
-                "passed": he_results["passed"],
-                "total": he_results["total"],
-            }
-            logger.info("HumanEval: %.1f%% (%d/%d)",
-                        he_results["pass_rate"] * 100,
-                        he_results["passed"],
-                        he_results["total"])
-        except Exception as e:
-            logger.error("HumanEval evaluation failed: %s", e)
-            results["humaneval"] = {"error": str(e)}
+    if eval_type != "humaneval":
+        raise ValueError(f"Unsupported eval_type {eval_type!r}; only 'humaneval' is supported.")
 
-    if eval_type in ("agent", "all"):
-        logger.info("=== Running Agent Eval on %s ===", checkpoint_path)
-        try:
-            agent_results = evaluate_swebench_lite(
-                checkpoint_path,
-                task_source="builtin",
-                max_turns=20,
-            )
-            results["agent_eval"] = {
-                "pass_rate": agent_results["pass_rate"],
-                "passed": agent_results["passed"],
-                "total": agent_results["total"],
-            }
-            logger.info("Agent Eval: %.1f%% (%d/%d)",
-                        agent_results["pass_rate"] * 100,
-                        agent_results["passed"],
-                        agent_results["total"])
-        except Exception as e:
-            logger.error("Agent evaluation failed: %s", e)
-            results["agent_eval"] = {"error": str(e)}
+    logger.info("=== Running HumanEval on %s ===", checkpoint_path)
+    try:
+        he_results = evaluate_humaneval(checkpoint_path)
+        results["humaneval"] = {
+            "pass_rate": he_results["pass_rate"],
+            "passed": he_results["passed"],
+            "total": he_results["total"],
+        }
+        logger.info(
+            "HumanEval: %.1f%% (%d/%d)",
+            he_results["pass_rate"] * 100,
+            he_results["passed"],
+            he_results["total"],
+        )
+    except Exception as e:
+        logger.error("HumanEval evaluation failed: %s", e)
+        results["humaneval"] = {"error": str(e)}
 
-    # Save results
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     checkpoint_name = Path(checkpoint_path).name or "base"
@@ -92,10 +67,71 @@ def run_evaluation(checkpoint_path: str, eval_type: str, output_dir: str) -> dic
     return results
 
 
+def _pass_rates(results: dict) -> dict[str, float | str]:
+    """Extract pass_rate per suite; use 'error' key if a suite failed."""
+    out: dict[str, float | str] = {}
+    key = "humaneval"
+    block = results.get(key, {})
+    if "error" in block:
+        out[key] = f"error: {block['error']}"
+    elif "pass_rate" in block:
+        out[key] = float(block["pass_rate"])
+    else:
+        out[key] = "N/A"
+    return out
+
+
+def head_to_head_evaluate(
+    checkpoint_a: str,
+    checkpoint_b: str,
+    suite: str,
+    output_dir: str,
+    *,
+    label_a: str = "A",
+    label_b: str = "B",
+) -> dict:
+    """Run HumanEval on two checkpoints and save a comparison JSON + print a table."""
+    if suite != "humaneval":
+        logger.warning("Only HumanEval is supported; ignoring suite=%r and using humaneval.", suite)
+        suite = "humaneval"
+    logger.info("Head-to-head: %s (%s) vs %s (%s)", label_a, checkpoint_a, label_b, checkpoint_b)
+    ra = run_evaluation(checkpoint_a, suite, output_dir)
+    rb = run_evaluation(checkpoint_b, suite, output_dir)
+    cmp_path = Path(output_dir) / f"head_to_head_{label_a}_vs_{label_b}_{suite}.json"
+    cmp_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pa, pb = _pass_rates(ra), _pass_rates(rb)
+    comparison = {
+        "timestamp": datetime.now().isoformat(),
+        "suite": suite,
+        label_a: {"checkpoint": checkpoint_a, "pass_rates": pa, "raw": ra},
+        label_b: {"checkpoint": checkpoint_b, "pass_rates": pb, "raw": rb},
+    }
+    with open(cmp_path, "w") as f:
+        json.dump(comparison, f, indent=2, default=str)
+    logger.info("Comparison saved to %s", cmp_path)
+
+    print("\n" + "=" * 72)
+    print(f"Benchmark comparison ({suite})")
+    print("=" * 72)
+    print(f"{'Suite':<22} {label_a:<24} {label_b:<24}")
+    print("-" * 72)
+    key = "humaneval"
+    va, vb = pa[key], pb[key]
+    if isinstance(va, float) and isinstance(vb, float):
+        delta = vb - va
+        sign = "+" if delta >= 0 else ""
+        extra = f" (Δ {sign}{delta * 100:.1f}%)"
+    else:
+        extra = ""
+    print(f"{'HumanEval':<22} {str(va):<24} {str(vb):<24}{extra}")
+    print("=" * 72)
+    return comparison
+
+
 def compare_stages(output_dir: str):
-    """Compare evaluation results across all pipeline stages."""
     out_path = Path(output_dir)
-    all_results = {}
+    all_results: dict = {}
 
     for stage, checkpoint in STAGE_CHECKPOINTS.items():
         result_files = list(out_path.glob(f"eval_{Path(checkpoint).name}*.json"))
@@ -109,38 +145,60 @@ def compare_stages(output_dir: str):
         logger.warning("No evaluation results found. Run evaluations first.")
         return
 
-    # Print comparison table
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 50)
     print("Pipeline Evaluation Comparison")
-    print("=" * 70)
-    print(f"{'Stage':<15} {'HumanEval':<20} {'Agent Eval':<20}")
-    print("-" * 70)
+    print("=" * 50)
+    print(f"{'Stage':<15} {'HumanEval':<12}")
+    print("-" * 50)
 
     for stage, results in all_results.items():
         he = results.get("humaneval", {})
-        ae = results.get("agent_eval", {})
 
-        he_str = f"{he.get('pass_rate', 0) * 100:.1f}%" if "pass_rate" in he else "N/A"
-        ae_str = f"{ae.get('pass_rate', 0) * 100:.1f}%" if "pass_rate" in ae else "N/A"
+        def fmt(d):
+            return f"{d.get('pass_rate', 0) * 100:.1f}%" if "pass_rate" in d else "N/A"
 
-        print(f"{stage:<15} {he_str:<20} {ae_str:<20}")
+        print(f"{stage:<15} {fmt(he):<12}")
 
-    print("=" * 70)
+    print("=" * 50)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Stage 4: Evaluation")
-    parser.add_argument("--checkpoint_path", type=str, default=None,
-                        help="Path to model checkpoint to evaluate")
-    parser.add_argument("--eval", choices=["humaneval", "agent", "all"], default="all",
-                        help="Which evaluation to run")
-    parser.add_argument("--output_dir", type=str, default="./evaluation_results",
-                        help="Directory to save results")
-    parser.add_argument("--compare", action="store_true",
-                        help="Compare results across all stages")
-    parser.add_argument("--eval_all_stages", action="store_true",
-                        help="Evaluate all pipeline stage checkpoints")
+    parser = argparse.ArgumentParser(description="Stage 4: Evaluation (HumanEval)")
+    parser.add_argument("--checkpoint_path", type=str, default=None)
+    parser.add_argument(
+        "--suite",
+        choices=["humaneval"],
+        default="humaneval",
+        help="Evaluation suite (HumanEval only)",
+    )
+    parser.add_argument("--output_dir", type=str, default="./evaluation_results")
+    parser.add_argument("--compare", action="store_true")
+    parser.add_argument("--eval_all_stages", action="store_true")
+    parser.add_argument(
+        "--head_to_head",
+        nargs=2,
+        metavar=("CKPT_A", "CKPT_B"),
+        help="Run HumanEval on two checkpoints and print/save a pass-rate comparison",
+    )
+    parser.add_argument(
+        "--head_labels",
+        nargs=2,
+        metavar=("LABEL_A", "LABEL_B"),
+        default=("sft_baseline", "after_rl"),
+        help="Labels for head-to-head table (default: sft_baseline after_rl)",
+    )
     args = parser.parse_args()
+
+    if args.head_to_head:
+        head_to_head_evaluate(
+            args.head_to_head[0],
+            args.head_to_head[1],
+            args.suite,
+            args.output_dir,
+            label_a=args.head_labels[0],
+            label_b=args.head_labels[1],
+        )
+        return
 
     if args.compare:
         compare_stages(args.output_dir)
@@ -148,20 +206,18 @@ def main():
 
     if args.eval_all_stages:
         for stage, checkpoint in STAGE_CHECKPOINTS.items():
-            ckpt_path = Path(checkpoint)
-            if not (ckpt_path.exists() or "/" not in checkpoint):
+            if not _checkpoint_available(checkpoint):
                 logger.warning("Checkpoint not found for %s (%s), skipping", stage, checkpoint)
                 continue
-            logger.info("=== Evaluating %s: %s ===", stage, checkpoint)
-            run_evaluation(checkpoint, args.eval, args.output_dir)
+            run_evaluation(checkpoint, args.suite, args.output_dir)
         compare_stages(args.output_dir)
         return
 
     if args.checkpoint_path is None:
         args.checkpoint_path = STAGE_CHECKPOINTS["base"]
-        logger.info("No checkpoint specified, using base model: %s", args.checkpoint_path)
+        logger.info("No checkpoint specified, using base: %s", args.checkpoint_path)
 
-    run_evaluation(args.checkpoint_path, args.eval, args.output_dir)
+    run_evaluation(args.checkpoint_path, args.suite, args.output_dir)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,22 @@
+model:
+  name_or_path: "./checkpoints/pipeline_quick_verify/cpt_phase2"
+  torch_dtype: "bfloat16"
+  attn_implementation: "eager"
+
+data:
+  dataset_name: "bigcode/starcoderdata"
+  fallback_dataset: "wikitext"
+  fallback_dataset_config: "wikitext-103-raw-v1"
+  fallback_text_column: "text"
+  languages: ["python"]
+  max_seq_length: 64
+  streaming: true
+
+training:
+  output_dir: "./checkpoints/pipeline_quick_verify/mtp"
+  learning_rate: 5.0e-5
+  max_steps: 1
+  gradient_accumulation_steps: 1
+  temperature: 1.0
+  logging_steps: 1
+  save_steps: 1

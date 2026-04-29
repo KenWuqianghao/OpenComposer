@@ -1,0 +1,48 @@
+# OpenRLHF ray job hyperparameters (used with scripts/rl_training.sh).
+# MoE router replay: set OPENCOMPOSER_ROUTER_REPLAY=1 and capture traces in-process (see README).
+model:
+  pretrain: "./checkpoints/stage2_sft"
+  torch_dtype: "bfloat16"
+
+rl:
+  algorithm: "dr_grpo"
+  kl_estimator: "k1"
+  max_turns: 30
+  context_trigger_tokens: 8192
+  summary_max_tokens: 1024
+  actor_learning_rate: 5.0e-7
+  train_batch_size: 64
+  micro_train_batch_size: 2
+  rollout_batch_size: 32
+  micro_rollout_batch_size: 4
+  max_samples: 10000
+  max_epochs: 1
+  n_samples_per_prompt: 4
+  prompt_max_len: 4096
+  generate_max_len: 2048
+  init_kl_coef: 0.01
+
+environment:
+  type: "docker"
+  image: "opencomposer/sandbox:latest"
+  timeout: 300
+  max_output_length: 10000
+
+reward:
+  type: "test_execution"
+  pass_reward: 1.0
+  fail_reward: -0.5
+  partial_reward: true
+  length_penalty_k: 0.02
+  length_penalty_q: 1.5
+
+vllm:
+  num_engines: 1
+  tensor_parallel_size: 1
+  gpu_memory_utilization: 0.45
+
+output:
+  save_path: "./checkpoints/stage3_rl"
+  save_steps: 50
+  logging_steps: 1
+  use_wandb: false

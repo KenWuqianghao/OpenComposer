@@ -1,0 +1,26 @@
+# MTP self-distillation (attach head + distill main LM logits)
+model:
+  name_or_path: "./checkpoints/qwen3_moe_cpt_phase1"
+  torch_dtype: "bfloat16"
+  attn_implementation: "sdpa"
+
+data:
+  dataset_name: "bigcode/starcoderdata"
+  fallback_dataset: "wikitext"
+  fallback_dataset_config: "wikitext-103-raw-v1"
+  fallback_text_column: "text"
+  languages: ["python"]
+  max_seq_length: 2048
+  streaming: true
+
+training:
+  output_dir: "./checkpoints/qwen3_moe_mtp"
+  learning_rate: 5.0e-5
+  max_steps: 500
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  warmup_ratio: 0.05
+  logging_steps: 10
+  save_steps: 100
+  bf16: true
+  temperature: 1.0

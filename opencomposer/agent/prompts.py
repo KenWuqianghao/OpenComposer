@@ -1,8 +1,10 @@
-"""System prompts and tool schema definitions for the coding agent."""
+"""System prompts and tool schema definitions (Qwen ChatML)."""
 
 from __future__ import annotations
 
 import json
+
+from transformers import PreTrainedTokenizerBase
 
 TOOL_SCHEMAS = [
     {
@@ -105,21 +107,16 @@ Be concise but preserve all critical information needed to continue the task.\
 
 
 def format_system_message() -> str:
-    """Return the system prompt for the coding agent."""
     return SYSTEM_PROMPT
 
 
 def format_tool_result(tool_name: str, result: str) -> str:
-    """Format a tool execution result for inclusion in the conversation."""
     return f"<observation>\n[{tool_name} result]\n{result}\n</observation>"
 
 
 def parse_tool_call(text: str) -> tuple[str, dict] | None:
-    """Parse a <tool_call> block from the model's output.
-
-    Returns (tool_name, arguments) or None if no valid tool call found.
-    """
     import re
+
     match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", text, re.DOTALL)
     if not match:
         return None
@@ -132,3 +129,30 @@ def parse_tool_call(text: str) -> tuple[str, dict] | None:
         return name, arguments
     except (json.JSONDecodeError, KeyError):
         return None
+
+
+def messages_to_chatml(
+    messages: list[dict[str, str]],
+    *,
+    tokenizer: PreTrainedTokenizerBase,
+    add_generation_prompt: bool = True,
+) -> str:
+    """Build prompt string using the model's chat template (Qwen / compatible)."""
+    try:
+        return tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=add_generation_prompt,
+        )
+    except Exception:
+        # Fallback: minimal ChatML with eos as turn terminator
+        im_start = "<|im_start|>"
+        im_end = tokenizer.eos_token or ""
+        parts: list[str] = []
+        for m in messages:
+            role = m["role"]
+            content = m["content"]
+            parts.append(f"{im_start}{role}\n{content}{im_end}\n")
+        if add_generation_prompt:
+            parts.append(f"{im_start}assistant\n")
+        return "".join(parts)

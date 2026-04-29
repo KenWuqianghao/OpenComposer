@@ -1,0 +1,9 @@
+# Tiny MoE smoke (use Qwen1.5-MoE so CI can run without 30B download).
+# Production pipeline: set model.name_or_path to Qwen/Qwen3-Coder-30B-A3B in phase YAMLs.
+#
+# Run: bash scripts/smoke_qwen3_moe_pipeline.sh
+# Optional: SMOKE_MOE_MODEL=Qwen/Qwen3-Coder-30B-A3B SMOKE_MAX_STEPS_PER_STAGE=3 bash scripts/smoke_qwen3_moe_pipeline.sh
+smoke_model: "Qwen/Qwen1.5-MoE-A2.7B"
+max_steps_cpt: 12
+max_steps_sft: 8
+max_seq_length: 256

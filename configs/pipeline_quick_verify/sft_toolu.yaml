@@ -1,24 +1,25 @@
 model:
-  name_or_path: "./checkpoints/stage1_cpt"
+  name_or_path: "./checkpoints/pipeline_quick_verify/cpt_phase3_sft"
   torch_dtype: "bfloat16"
   attn_implementation: "sdpa"
 
 data:
   dataset_path: "./data/sft_tool_use"
-  max_seq_length: 512
+  max_seq_length: 256
 
 training:
-  output_dir: "./checkpoints/stage2_sft"
-  dataloader_num_workers: 0
+  output_dir: "./checkpoints/pipeline_quick_verify/stage2_sft"
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 1
   learning_rate: 1.0e-5
   lr_scheduler_type: "cosine"
-  warmup_ratio: 0.05
+  warmup_ratio: 0.0
   num_train_epochs: 1
-  max_steps: 10
-  save_steps: 5
+  max_steps: 2
+  save_steps: 2
   logging_steps: 1
   bf16: true
   gradient_checkpointing: true
   deepspeed: null
+  dataloader_num_workers: 0
+  no_eval: true

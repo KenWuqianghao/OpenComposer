@@ -1,0 +1,31 @@
+# Tiny model + short steps for full-stack wiring checks (CPU-friendly; use GPU when available).
+model:
+  name_or_path: "Qwen/Qwen2.5-0.5B"
+  torch_dtype: "bfloat16"
+  attn_implementation: "sdpa"
+
+data:
+  dataset_name: "bigcode/starcoderdata"
+  fallback_dataset: "wikitext"
+  fallback_dataset_config: "wikitext-103-raw-v1"
+  fallback_text_column: "text"
+  languages: ["python"]
+  max_seq_length: 128
+  streaming: true
+
+training:
+  output_dir: "./checkpoints/pipeline_quick_verify/cpt_phase1"
+  optim: "adamw_bnb_8bit"
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 2.0e-5
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.0
+  num_train_epochs: 1
+  max_steps: 2
+  save_steps: 2
+  logging_steps: 1
+  bf16: true
+  gradient_checkpointing: true
+  dataloader_num_workers: 0
+  deepspeed: null

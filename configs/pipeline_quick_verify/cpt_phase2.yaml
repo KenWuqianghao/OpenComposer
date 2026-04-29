@@ -1,7 +1,5 @@
-# End-to-end smoke run on one GPU when GLM-9B full FT does not fit (OOM).
-# Uses a small instruction model; data path and scripts match the real pipeline.
 model:
-  name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
+  name_or_path: "./checkpoints/pipeline_quick_verify/cpt_phase1"
   torch_dtype: "bfloat16"
   attn_implementation: "sdpa"
 
@@ -11,20 +9,21 @@ data:
   fallback_dataset_config: "wikitext-103-raw-v1"
   fallback_text_column: "text"
   languages: ["python"]
-  max_seq_length: 256
+  max_seq_length: 128
   streaming: true
 
 training:
-  output_dir: "./checkpoints/stage1_cpt"
+  output_dir: "./checkpoints/pipeline_quick_verify/cpt_phase2"
+  optim: "adamw_bnb_8bit"
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 1
   learning_rate: 1.0e-5
   lr_scheduler_type: "cosine"
-  warmup_ratio: 0.05
+  warmup_ratio: 0.0
   num_train_epochs: 1
-  max_steps: 12
-  save_steps: 6
-  logging_steps: 2
+  max_steps: 2
+  save_steps: 2
+  logging_steps: 1
   bf16: true
   gradient_checkpointing: true
   dataloader_num_workers: 0

@@ -1,17 +1,4 @@
-"""Self-summarization module for context compression during long episodes.
-
-Implements Cursor's self-summarization approach where the model learns to
-compress its own context at a fixed token-length trigger. The summary
-becomes part of the RL training trajectory, so good summaries that
-preserve critical information get reinforced alongside correct solutions.
-
-Key design from Composer 2:
-1. Model generates until context hits a token trigger
-2. A synthetic summarization query is inserted
-3. Model generates a compressed summary
-4. Episode continues from the summary + conversation state
-5. Final reward backpropagates through the entire chain including summaries
-"""
+"""Self-summarization module for context compression during long episodes."""
 
 from __future__ import annotations
 
@@ -19,12 +6,15 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from transformers import PreTrainedTokenizerBase
+
+from opencomposer.agent.prompts import messages_to_chatml
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class SummarizationConfig:
-    """Configuration for self-summarization behavior."""
     context_trigger_tokens: int = 8192
     summary_max_tokens: int = 1024
     min_turns_before_summary: int = 3
@@ -35,7 +25,6 @@ class SummarizationConfig:
 
 @dataclass
 class ConversationState:
-    """Tracks conversation state for summarization decisions."""
     original_task: str = ""
     current_plan: str = ""
     changes_made: list[str] = field(default_factory=list)
@@ -61,30 +50,23 @@ Be concise but complete. Missing a critical detail could cause the task to fail.
 
 
 class SelfSummarizer:
-    """Manages self-summarization within the RL training loop.
-
-    This class handles:
-    - Tracking context length and deciding when to trigger summarization
-    - Formatting the summarization prompt
-    - Processing the model's summary output
-    - Constructing the post-summary context to continue the episode
-    """
-
-    def __init__(self, config: SummarizationConfig | None = None):
+    def __init__(
+        self,
+        config: SummarizationConfig | None = None,
+        tokenizer: PreTrainedTokenizerBase | None = None,
+    ):
         self.config = config or SummarizationConfig()
+        self.tokenizer = tokenizer
         self._state = ConversationState()
 
     def reset(self, task_description: str):
-        """Reset state for a new episode."""
         self._state = ConversationState(original_task=task_description)
 
     def update_token_count(self, new_tokens: int):
-        """Update the running token count after a generation step."""
         self._state.total_tokens_generated += new_tokens
         self._state.turns_since_last_summary += 1
 
     def should_summarize(self) -> bool:
-        """Check if self-summarization should be triggered."""
         if self._state.turns_since_last_summary < self.config.min_turns_before_summary:
             return False
         if self._state.num_prior_summarizations >= self.config.max_summarizations_per_episode:
@@ -92,7 +74,6 @@ class SelfSummarizer:
         return self._state.total_tokens_generated >= self.config.context_trigger_tokens
 
     def get_summarization_prompt(self) -> str:
-        """Generate the summarization prompt to inject into the conversation."""
         self._state.num_prior_summarizations += 1
         summary_num = self._state.num_prior_summarizations
 
@@ -107,29 +88,33 @@ class SelfSummarizer:
         return prompt
 
     def process_summary(self, summary_text: str) -> str:
-        """Process the model's summary and construct the post-summary context.
-
-        Args:
-            summary_text: The model's generated summary.
-
-        Returns:
-            The new context prefix to continue the episode from.
-        """
-        # Reset token counter to account for the compressed context
-        self._state.total_tokens_generated = len(summary_text.split()) * 2  # rough estimate
+        self._state.total_tokens_generated = len(summary_text.split()) * 2
         self._state.turns_since_last_summary = 0
 
-        # Construct the continuation context
-        continuation = (
-            f"<|system|>\n"
-            f"You are a coding agent continuing a task. Below is your self-summary "
-            f"from the prior context (summarization #{self._state.num_prior_summarizations}).\n\n"
-            f"<|user|>\n"
-            f"[CONTINUED FROM SELF-SUMMARY]\n\n"
-            f"{summary_text}\n\n"
-            f"Continue working on the task. Use your tools to make progress.\n"
-        )
-        return continuation
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a coding agent continuing a task. Below is your self-summary "
+                    f"from the prior context (summarization #{self._state.num_prior_summarizations})."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    "[CONTINUED FROM SELF-SUMMARY]\n\n"
+                    f"{summary_text}\n\n"
+                    "Continue working on the task. Use your tools to make progress."
+                ),
+            },
+        ]
+        if self.tokenizer is not None:
+            return messages_to_chatml(messages, tokenizer=self.tokenizer, add_generation_prompt=True)
+        im_start = "<|im_start|>"
+        im_end = ""
+        parts = [f"{im_start}{m['role']}\n{m['content']}{im_end}\n" for m in messages]
+        parts.append(f"{im_start}assistant\n")
+        return "".join(parts)
 
     def format_for_training(
         self,
@@ -137,18 +122,8 @@ class SelfSummarizer:
         summary_tokens: list[int],
         post_summary_tokens: list[int],
     ) -> dict[str, Any]:
-        """Format a summarized episode for RL training.
-
-        In OpenRLHF's multi-turn mode, the entire trajectory (including
-        summaries) is treated as one sequence. The final reward applies
-        to all tokens, so summaries that preserve critical information
-        get reinforced when the episode succeeds.
-
-        Returns dict with token sequences and metadata for training.
-        """
         full_sequence = pre_summary_tokens + summary_tokens + post_summary_tokens
 
-        # Track which tokens are summary vs. action
         token_types = (
             ["pre_summary"] * len(pre_summary_tokens)
             + ["summary"] * len(summary_tokens)

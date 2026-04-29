@@ -1,8 +1,4 @@
-"""Agent harness: orchestrates the model's interaction with tools.
-
-Manages the multi-turn loop where the model generates actions (tool calls),
-the tools execute in the sandbox, and results are fed back.
-"""
+"""Agent harness: orchestrates the model's interaction with tools."""
 
 from __future__ import annotations
 
@@ -10,12 +6,13 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from opencomposer.agent.tools import ToolExecutor
+from transformers import PreTrainedTokenizerBase
+
 from opencomposer.agent.prompts import (
     format_system_message,
     format_tool_result,
+    messages_to_chatml,
     parse_tool_call,
-    SUMMARIZATION_PROMPT,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,67 +20,54 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AgentState:
-    """Tracks the state of a single agent episode."""
     task_description: str
     messages: list[dict[str, str]] = field(default_factory=list)
     turn: int = 0
     done: bool = False
     total_tokens: int = 0
     num_summarizations: int = 0
+    full_transcript: str = ""
 
-    def add_message(self, role: str, content: str):
+    def add_message_plain(self, role: str, content: str) -> None:
         self.messages.append({"role": role, "content": content})
 
-    def get_conversation_text(self) -> str:
-        """Return the full conversation as a flat string."""
-        parts = []
-        for msg in self.messages:
-            role = msg["role"]
-            content = msg["content"]
-            if role == "system":
-                parts.append(f"<|system|>\n{content}")
-            elif role == "user":
-                parts.append(f"<|user|>\n{content}")
-            elif role == "assistant":
-                parts.append(f"<|assistant|>\n{content}")
-            elif role == "observation":
-                parts.append(f"<|observation|>\n{content}")
-        return "\n".join(parts) + "\n<|assistant|>\n"
+    def add_message(self, role: str, content: str) -> None:
+        """Append a message; ``observation`` is folded into ``user`` for ChatML."""
+        if role == "observation":
+            self.messages.append({"role": "user", "content": content})
+        else:
+            self.messages.append({"role": role, "content": content})
+        self.full_transcript += content
 
 
 class AgentHarness:
-    """Manages one episode of agent-environment interaction."""
-
     def __init__(
         self,
         workspace_dir: str,
         max_turns: int = 30,
         command_timeout: int = 30,
+        tokenizer: PreTrainedTokenizerBase | None = None,
     ):
+        from opencomposer.agent.tools import ToolExecutor
+
         self.tool_executor = ToolExecutor(workspace_dir, timeout=command_timeout)
         self.max_turns = max_turns
+        self.tokenizer = tokenizer
         self.state: AgentState | None = None
 
     def reset(self, task_description: str) -> AgentState:
-        """Initialize a new episode with a task description."""
         self.state = AgentState(task_description=task_description)
         self.state.add_message("system", format_system_message())
         self.state.add_message("user", task_description)
         return self.state
 
     def step(self, model_output: str) -> tuple[str, bool]:
-        """Process one turn: parse model output, execute tools, return feedback.
-
-        Returns:
-            (feedback_text, is_done): The observation text and whether episode ended.
-        """
         if self.state is None:
             raise RuntimeError("Call reset() before step()")
 
         self.state.turn += 1
         self.state.add_message("assistant", model_output)
 
-        # Check for completion signals
         completion_signals = [
             "task is complete",
             "the issue has been fixed",
@@ -96,12 +80,10 @@ class AgentHarness:
             self.state.done = True
             return "", True
 
-        # Check max turns
         if self.state.turn >= self.max_turns:
             self.state.done = True
             return "Maximum turns reached. Episode ending.", True
 
-        # Parse and execute tool call
         tool_call = parse_tool_call(model_output)
         if tool_call is None:
             feedback = (
@@ -120,8 +102,10 @@ class AgentHarness:
 
         return feedback, False
 
-    def get_conversation_for_generation(self) -> str:
-        """Return current conversation formatted for model input."""
+    def get_conversation_for_generation(self, tokenizer: PreTrainedTokenizerBase | None = None) -> str:
         if self.state is None:
             raise RuntimeError("Call reset() before generating")
-        return self.state.get_conversation_text()
+        tok = tokenizer or self.tokenizer
+        if tok is None:
+            raise ValueError("Tokenizer required for ChatML formatting (pass tokenizer= or set harness.tokenizer)")
+        return messages_to_chatml(self.state.messages, tokenizer=tok, add_generation_prompt=True)

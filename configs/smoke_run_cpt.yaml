@@ -1,7 +1,6 @@
-# GLM-4-9B CPT on ~96GB HBM: no DeepSpeed (single-GPU ZeRO does not shrink optimizer).
-# Use bitsandbytes 8-bit AdamW to fit weights + optimizer + activations.
+# Isolated smoke CPT run (keeps existing stage checkpoints untouched).
 model:
-  name_or_path: "THUDM/glm-4-9b-chat"
+  name_or_path: "Qwen/Qwen2.5-0.5B-Instruct"
   torch_dtype: "bfloat16"
   attn_implementation: "sdpa"
 
@@ -11,21 +10,20 @@ data:
   fallback_dataset_config: "wikitext-103-raw-v1"
   fallback_text_column: "text"
   languages: ["python"]
-  max_seq_length: 1024
+  max_seq_length: 256
   streaming: true
 
 training:
-  output_dir: "./checkpoints/stage1_cpt"
-  optim: "adamw_bnb_8bit"
+  output_dir: "./checkpoints/smoke_stage1_cpt"
   per_device_train_batch_size: 1
-  gradient_accumulation_steps: 16
-  learning_rate: 2.0e-5
+  gradient_accumulation_steps: 1
+  learning_rate: 1.0e-5
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.05
   num_train_epochs: 1
-  max_steps: 100
-  save_steps: 50
-  logging_steps: 5
+  max_steps: 12
+  save_steps: 6
+  logging_steps: 2
   bf16: true
   gradient_checkpointing: true
   dataloader_num_workers: 0
